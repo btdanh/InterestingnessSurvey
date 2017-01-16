@@ -1,5 +1,5 @@
-import itertools
 from AprioriHashTable import AprioriHashTable
+from AprioriHashItem import AprioriHashItem, AprioriHashItemCollection
 
 class Apriori:
     
@@ -24,8 +24,8 @@ class Apriori:
         for index in range(len(candidate_first_items) - 1):
             subset = list(candidate_first_items)
             subset.pop(index)
-            key = self.createKeyFromItemset(subset)
-            if (key not in L_k_1) or (candidate_last_item not in L_k_1[key]) :
+            key = AprioriHashTable.createKeyFromItemset(subset)
+            if L_k_1.notBelongTo(key, candidate_last_item):
                 return True
         return False
     
@@ -33,84 +33,44 @@ class Apriori:
     
     def generateCandidates(self, L_k_1, k):
         print('generate candidates with {0} items', k)
-        C_k = {}
-        for key, bin_value in L_k_1.items():
-            bin_size = len(bin_value)
-            for index in range(bin_size - 1):
+        C_k = AprioriHashTable()
+        for key, hash_item_collection in L_k_1.getItems():
+            for index in range(hash_item_collection.size() - 1):
+                
+                index_th_item = hash_item_collection.at(index)
                 new_key = ''
                 if key == '':
-                    new_key = bin_value[index]
+                    new_key = index_th_item.last_item
                 else:
-                    new_key = key +',' + bin_value[index]
-                new_bin_value = []
+                    new_key = key +',' + index_th_item.last_item
+                new_hash_collection = AprioriHashItemCollection()
                 
                 #check if it is infrequent item-set
-                candidate = self.getItemsetFromKey(new_key)
-                for item in bin_value[index+1:bin_size]:
-                    if not self.hasInfrequentSubset(candidate, item, L_k_1, k): 
-                        new_bin_value.append(item)
-                if len(new_bin_value) > 0:        
-                    C_k[new_key] = new_bin_value     
+                candidate = AprioriHashTable.getItemsetFromKey(new_key)
+                for item in hash_item_collection.fromIndexToEnd(index + 1):
+                    if not self.hasInfrequentSubset(candidate, item.last_item, L_k_1, k):
+                        new_item = AprioriHashItem(item.last_item)
+                        inter_items = set(index_th_item.tids).intersection(item.tids)      
+                        if len(inter_items) > 0:  
+                            new_item.addTransactions(list(inter_items))
+                            new_hash_collection.addItem(new_item)
+                        
+                if new_hash_collection.size() > 0:        
+                    C_k.insertKeyAndValue(new_key,  new_hash_collection)     
         return C_k
-
-    def getItemsets(self, itemset_hash):
-        itemsets = []
-        for key, bin_value in itemset_hash.items():
-            if key == '':
-                itemsets.extend(bin_value)
-            else:
-                prefix_items = self.getItemsetFromKey(key)
-                for item in bin_value:
-                    new_itemset = list(prefix_items)
-                    new_itemset.append(item)
-                    itemsets.append(new_itemset)
-        return itemsets
-                    
-    def countFrequencyForItemsets(self, C_k, dataset):
-        print('count for support')
-        counter = {}
-        prefix_itemsets = {}
-        for key, bin_value in C_k.items():
-            counter[key] = list(itertools.repeat(0, len(bin_value)))
-            prefix_itemsets[key] = self.getItemsetFromKey(key)
-            
-        for transaction in dataset:
-            for key, bin_value in C_k.items():
-                for index in range(len(bin_value)):
-                    
-                    itemset = list(prefix_itemsets[key])
-                    itemset.append(bin_value[index])
-                    
-                    if set(itemset) <= transaction:
-                        counter[key][index] += 1
-        return counter;
 
     def generateFrequentItemSets(self, dataset):
         L = []
         
         L_k_1 = self.generateL1(dataset)
         print(L_k_1)
-        L.extend(self.getItemsets(L_k_1))
+        L.extend(L_k_1.getItemsets())
         
         k = 2
-        while len(L_k_1) > 0:
+        while not L_k_1.isEmpty():
             C_k = self.generateCandidates(L_k_1, k)
-            
-            counter = self.countFrequencyForItemsets(C_k, dataset)
-            
-            L_k_1 = {}
-            print('get frequent itemsets')
-            for key, bin_value in counter.items():
-                key_flag = False
-                for index in range(len(bin_value)):
-                    if bin_value[index] >= self.min_support and key_flag == False:
-                        key_flag = True
-                        L_k_1[key] = []
-                        L_k_1[key].append(C_k[key][index])
-                    elif bin_value[index] >= self.min_support and key_flag == True:
-                        L_k_1[key].append(C_k[key][index])
-                        
-            L.extend(self.getItemsets(L_k_1))
+            L_k_1 = C_k.getFrequentItemsets(self.min_support)
+            L.extend(L_k_1.getItemsets())
             print('------------------------------')
             print(L_k_1)
             k += 1
