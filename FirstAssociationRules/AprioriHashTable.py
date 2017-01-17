@@ -1,8 +1,13 @@
 from AprioriHashItem import AprioriHashItemCollection
+from threading import Lock
 
 class AprioriHashTable:
     def __init__(self):
         self.table = {}
+        self.table_write_lock = Lock()
+        
+    def size(self):
+        return len(self.table)
     
     def isEmpty(self):
         return len(self.table) == 0;
@@ -75,3 +80,12 @@ class AprioriHashTable:
     def sort(self):
         for hash_item_collection in self.table.values():
             hash_item_collection.sort()
+
+    # this function is used for multi-thread
+    def merge(self, other_hash_table):
+        with self.table_write_lock:
+            for key, hash_item_collection in other_hash_table.getItems():
+                self.table[key] = hash_item_collection
+    
+    def clear(self):
+        self.table.clear()
