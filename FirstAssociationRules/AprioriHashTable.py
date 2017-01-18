@@ -36,29 +36,18 @@ class AprioriHashTable:
     # insert a item set and its transaction 
     def addItemset(self, key, hash_item):
         self.table[key].addItem(hash_item)
-        
-    # get a item-set from its key
-    @staticmethod
-    def getItemsetFromKey(key):
-        if key == '':
-            return []
-        else: 
-            return key.split(',')
-    
-    # create a key from a item - set
-    @staticmethod
-    def createKeyFromItemset(itemset):
-        return ",".join(itemset)
     
     # get all item-set in the hash table
     def getItemsets(self):
-        itemsets = []
+        itemsets = {}
         for key, hash_item_collection in self.table.items():
-            prefix_items = AprioriHashTable.getItemsetFromKey(key)
             for hash_item in hash_item_collection:
-                new_itemset = list(prefix_items)
-                new_itemset.append(hash_item.last_item)
-                itemsets.append(new_itemset)
+                new_key = ''
+                if key == '': 
+                    new_key = hash_item.last_item
+                else:
+                    new_key = key + ',' + hash_item.last_item
+                itemsets[new_key] = hash_item.size()
         return itemsets
     
     # get number of item-set have same K - 1 first items.
@@ -89,3 +78,24 @@ class AprioriHashTable:
     
     def clear(self):
         self.table.clear()
+        
+    def separateToSubParts(self, n):
+        number_of_keys = self.size()
+        if number_of_keys < n:
+            return [self]
+        
+        number_for_each_part = (int)(number_of_keys/n) + 1
+        counter = 0
+        sub_hash_tables = []
+        sub_hash_table = AprioriHashTable()
+        
+        for key, hash_item_collection in self.getItems():
+            if counter < number_for_each_part:
+                sub_hash_table.insertKeyAndValue(key, hash_item_collection)
+            elif counter == number_for_each_part:
+                sub_hash_tables.append(sub_hash_table)
+                sub_hash_table = AprioriHashTable()
+                sub_hash_table.insertKeyAndValue(key, hash_item_collection)
+                counter = 0
+        sub_hash_tables.append(sub_hash_table)
+        return sub_hash_tables
