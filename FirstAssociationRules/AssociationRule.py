@@ -1,4 +1,5 @@
 import ItemsetHelper
+import random
 
 class AssociationRuleGenerator:
     
@@ -26,9 +27,11 @@ class AssociationRuleGenerator:
         bits[k] = False
         
     # just keep number_of_rules best rules in mining process.
-    def generateRules(self, frequentItemsets, number_of_rules, m = 1, k = 1):
+    def generateRules(self, frequentItemsets, selected_rules_dict = None, m = 1, k = 1):
         
-        best_rules = []
+        association_rules = []
+        ranks = []
+        
         for itemset_key, frequency in frequentItemsets.items():
             itemset = ItemsetHelper.getItemsetFromKey(itemset_key)
             if len(itemset) == 1:
@@ -44,16 +47,46 @@ class AssociationRuleGenerator:
                 right = frequentItemsets[right_subset_key]
                 
                 value = self.measure(left, right, frequency, m, k)
-                index = len(best_rules)-1
-                while index >= 0:
-                    if value <= best_rules[index][0]:
-                        best_rules.insert(index+1, (value, left_subset_key, right_subset_key))
-                        break
-                    else:
-                        index -= 1
-                if index < 0:
-                    best_rules.insert(0, (value, left_subset_key, right_subset_key))
-                if len(best_rules) > number_of_rules:
-                    best_rules.pop()
-        return best_rules
-            
+                ranks.append(value)
+                
+                rule = (value, left_subset_key, right_subset_key)
+                rule_key = left_subset_key + "=>" + right_subset_key
+                if selected_rules_dict == None or (rule_key in selected_rules_dict):
+                    association_rules.append(rule)
+        ranks = list(set(ranks))
+        ranks.sort(reverse=True)
+        return (association_rules, ranks)
+    
+    @staticmethod
+    def findRank(item_list, element):
+        left = 0
+        right = len(item_list) - 1
+        
+        while left <= right:
+            pivot = int((left + right)/2)
+            if element == item_list[pivot]:
+                return pivot
+            elif element < item_list[pivot]:
+                left = pivot + 1
+            else:
+                right = pivot -1
+        return -1
+    
+    def selectEvaluatedRules(self, rules_and_ranks, threshold = 500):
+        rules = rules_and_ranks[0]
+        selected_rules = random.sample(rules, threshold)
+        
+        selected_rules_dict = {}
+        for r in selected_rules:
+            rule_key = r[1] + "=>" +r[2]
+            selected_rules_dict[rule_key] = r
+        return selected_rules_dict
+        
+    
+    def searchRankForValues(self, selected_rules, ranks):
+        rule_ranks = []
+        for rule in selected_rules:
+            rule_ranks.append((AssociationRuleGenerator.findRank(ranks, rule[0]), rule[0], rule[1], rule[2]))
+        return rule_ranks
+    
+        
