@@ -2,19 +2,30 @@ import DataSet
 import Apriori
 import sys
 from AssociationRule import AssociationRuleGenerator
-from InterestingnessMeasures import confidence, jaccard
+from InterestingnessMeasures import confidence, jaccard, coverage
+import CorrelationMeasures
 
-def writeAssociationRulesToFile(file_name, rules):
-    rules.sort(key=lambda x: (x[2], x[3]))
+def writeAssociationRules(file_name, selected_keys, association_rules):
     with open(file_name, "w") as text_file:
-        for r in rules:
-            text_file.write(str(r[0]) + ' # ' + str(r[1]) + ' # ' + r[2] + '->' + r[3])
+        for rule in selected_keys:
+            text_file.write(rule)
+            values = association_rules[rule]
+            text_file.write(';')
+            text_file.write(';'.join(map(str, values)))
             text_file.write('\n')
-
+            
+def writeMatrix(file_name, matrix):
+    with open(file_name, "w") as text_file:
+        for line in matrix:
+            text_file.write(','.join(map(str, line)))
+            text_file.write('\n')
+            
 def main(argv):
     input_file = 'input_4.csv'
-    output_file_2 = 'output_4_jaccard.txt'
-    output_file_1 = 'output_4_confidence.txt'
+    output_file_1 = 'rules_4.csv'
+    output_file_2 = 'ranks_4.csv'
+    output_file_3 = 'correlation_4.csv'
+    
     min_sup = 5.0
     min_conf = 1
     apriori_alg = Apriori.Apriori(min_sup, min_conf)
@@ -25,24 +36,21 @@ def main(argv):
     
     frequent_itemsets = apriori_alg.generateFrequentItemSets(data, 4)
     
-    conf_generator = AssociationRuleGenerator(confidence)
-    conf_rules_and_ranks = conf_generator.generateRules(frequent_itemsets)
-    print('selecting rule for evaluation......')
-    conf_rules = conf_generator.selectEvaluatedRules(conf_rules_and_ranks, 10)
-    print('searching ranks for selected rules...')
-    conf_ranks = conf_generator.searchRankForValues(conf_rules.values(), conf_rules_and_ranks[1])
+    measures = [confidence, jaccard, coverage]
+    rule_generator = AssociationRuleGenerator(measures)
+    rules_and_ranks = rule_generator.generateRules(frequent_itemsets)    
+    selected_keys = rule_generator.selectRandomRules(rules_and_ranks[0], 3000)
+    print('writing selected rules....')
+    writeAssociationRules(output_file_1, selected_keys, rules_and_ranks[0])
     
-    print('writing rules for confidence...')
-    writeAssociationRulesToFile(output_file_1, conf_ranks)
-    print ("Done!!!")
+    ranks_matrix = rule_generator.searchRankForValues(selected_keys, rules_and_ranks[0], rules_and_ranks[1])
+    print('writing rank matrix ....')
+    writeMatrix(output_file_2, ranks_matrix)
     
-    jacc_generator = AssociationRuleGenerator(jaccard)
-    jacc_rules_and_ranks = jacc_generator.generateRules(frequent_itemsets, conf_rules)
-    print('searching ranks for selected rules...')
-    jacc_ranks = jacc_generator.searchRankForValues(jacc_rules_and_ranks[0], jacc_rules_and_ranks[1])
+    correlation_coefs = CorrelationMeasures.computePearmanCorrelation(ranks_matrix)
+    print('writing correlation matrix ...')
+    writeMatrix(output_file_3, correlation_coefs[0])
     
-    print('writing rules for jaccard...')
-    writeAssociationRulesToFile(output_file_2, jacc_ranks)
     print ("Done!!!")
                 
 if __name__ == "__main__":

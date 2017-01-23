@@ -1,10 +1,12 @@
 import ItemsetHelper
 import random
+import numpy
+from scipy._lib.six import xrange
 
 class AssociationRuleGenerator:
     
-    def __init__(self, interestingness):
-        self.measure = interestingness
+    def __init__(self, measures):
+        self.measures = measures
        
     def generateSubsets(self, bits, item_set, k, sub_lists): 
         if k >= len(item_set):
@@ -26,11 +28,10 @@ class AssociationRuleGenerator:
         self.generateSubsets(bits, item_set, k+1, sub_lists)
         bits[k] = False
         
-    # just keep number_of_rules best rules in mining process.
-    def generateRules(self, frequentItemsets, selected_rules_dict = None, m = 1, k = 1):
+    def generateRules(self, frequentItemsets, m = 1, k = 1):
         
-        association_rules = []
-        ranks = []
+        association_rules = {}
+        rank_indicators = [[] for x in xrange(len(self.measures))]
         
         for itemset_key, frequency in frequentItemsets.items():
             itemset = ItemsetHelper.getItemsetFromKey(itemset_key)
@@ -46,16 +47,21 @@ class AssociationRuleGenerator:
                 right_subset_key = element[1]
                 right = frequentItemsets[right_subset_key]
                 
-                value = self.measure(left, right, frequency, m, k)
-                ranks.append(value)
-                
-                rule = (value, left_subset_key, right_subset_key)
                 rule_key = left_subset_key + "=>" + right_subset_key
-                if selected_rules_dict == None or (rule_key in selected_rules_dict):
-                    association_rules.append(rule)
-        ranks = list(set(ranks))
-        ranks.sort(reverse=True)
-        return (association_rules, ranks)
+                association_rules[rule_key] = []
+                
+                for index in range(len(self.measures)):
+                    value = self.measures[index](left, right, frequency, m, k)
+                    association_rules[rule_key].append(value)
+                    rank_indicators[index].append(value)
+
+        final_rank_indicator = []
+        for rank_list in rank_indicators:
+            r = list(set(rank_list))
+            r.sort(reverse=True)
+            final_rank_indicator.append(r)
+            
+        return (association_rules, final_rank_indicator)
     
     @staticmethod
     def findRank(item_list, element):
@@ -65,28 +71,24 @@ class AssociationRuleGenerator:
         while left <= right:
             pivot = int((left + right)/2)
             if element == item_list[pivot]:
-                return pivot
+                return pivot + 1
             elif element < item_list[pivot]:
                 left = pivot + 1
             else:
                 right = pivot -1
         return -1
     
-    def selectEvaluatedRules(self, rules_and_ranks, threshold = 500):
-        rules = rules_and_ranks[0]
-        selected_rules = random.sample(rules, threshold)
-        
-        selected_rules_dict = {}
-        for r in selected_rules:
-            rule_key = r[1] + "=>" +r[2]
-            selected_rules_dict[rule_key] = r
-        return selected_rules_dict
-        
+    def selectRandomRules(self, association_rules, threshold = 500):
+        return random.sample(association_rules.keys(), min(threshold,len(association_rules)))
+            
     
-    def searchRankForValues(self, selected_rules, ranks):
-        rule_ranks = []
-        for rule in selected_rules:
-            rule_ranks.append((AssociationRuleGenerator.findRank(ranks, rule[0]), rule[0], rule[1], rule[2]))
-        return rule_ranks
-    
+    def searchRankForValues(self, selected_keys, association_rules, rank_indicators):
         
+        ranks_matrix = numpy.zeros((len(selected_keys), len(self.measures)))
+        i = 0
+        for rule_key in selected_keys:
+            for j in range(len(self.measures)):
+                rank = AssociationRuleGenerator.findRank(rank_indicators[j], association_rules[rule_key][j])
+                ranks_matrix[i,j] = rank
+            i += 1
+        return ranks_matrix
