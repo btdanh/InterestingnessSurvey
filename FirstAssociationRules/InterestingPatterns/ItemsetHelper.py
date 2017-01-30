@@ -1,4 +1,3 @@
-
 def getItemsetFromKey(key):
     if key == '':
         return []

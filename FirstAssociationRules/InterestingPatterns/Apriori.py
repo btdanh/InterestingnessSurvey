@@ -1,13 +1,12 @@
-from AprioriHashTable import AprioriHashTable
-from AprioriHashItem import AprioriHashItem, AprioriHashItemCollection
 from threading import Thread
+from InterestingPatterns.AprioriHashTable import AprioriHashTable
+from InterestingPatterns.AprioriHashItem import AprioriHashItem
+from InterestingPatterns.AprioriHashItemCollection import AprioriHashItemCollection
 
 class Apriori:
     
-    def __init__(self, min_support, interest_measure):
+    def __init__(self, min_support):
         self.min_support = min_support
-        self.interest_measure = interest_measure
-        
         self.L_k = AprioriHashTable()
         
     def generateL1(self, dataset):
@@ -63,7 +62,7 @@ class Apriori:
         k = 2
         while not L_k_1.isEmpty():
             
-            print("extract {0} item-sets....", k)
+            print('extracting item-sets with ' + str(k) + ' items ....')
             
             #divide L_k_1 into n parts
             self.L_k = AprioriHashTable()

@@ -1,4 +1,4 @@
-from AprioriHashItem import AprioriHashItemCollection
+from InterestingPatterns.AprioriHashItemCollection import AprioriHashItemCollection
 from threading import Lock
 
 class AprioriHashTable:

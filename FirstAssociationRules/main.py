@@ -1,57 +1,93 @@
-import DataSet
-import Apriori
 import sys
-from AssociationRule import AssociationRuleGenerator
-from InterestingnessMeasures import confidence, jaccard, coverage
-import CorrelationMeasures
+from InterestingPatterns.Apriori import Apriori
+from InterestingPatterns.DataSet import DataSet
+from InterestingPatterns.AssociationRuleGenerator import AssociationRuleGenerator
+from UnexpectedPatterns.RulesClustering import generateRuleVector, computeDistances, runDBSCAN
+from ProgramArguments import ProgramArguments
+from IOHelper import writeFrequentItemsets, writeAssociationRules,\
+    readFrequentItemsets, readAssociationRules, writeInterestingness,\
+    writeCorrelationMatrix, writeClustersOfRules
+from InterestingPatterns.InterestingnessMeasures import *
+from InterestingPatterns.CorrelationMeasures import computePearmanCorrelation
 
-def writeAssociationRules(file_name, selected_keys, association_rules):
-    with open(file_name, "w") as text_file:
-        for rule in selected_keys:
-            text_file.write(rule)
-            values = association_rules[rule]
-            text_file.write(';')
-            text_file.write(';'.join(map(str, values)))
-            text_file.write('\n')
-            
-def writeMatrix(file_name, matrix):
-    with open(file_name, "w") as text_file:
-        for line in matrix:
-            text_file.write(','.join(map(str, line)))
-            text_file.write('\n')
+#from InterestingPatterns.CorrelationMeasures import computePearmanCorrelation
+
+
             
 def main(argv):
-    input_file = 'input_4.csv'
-    output_file_1 = 'rules_4.csv'
-    output_file_2 = 'ranks_4.csv'
-    output_file_3 = 'correlation_4.csv'
     
-    min_sup = 5.0
-    min_conf = 1
-    apriori_alg = Apriori.Apriori(min_sup, min_conf)
-    
-    data = DataSet.DataSet()
-    #data.loadInHorizontalFormat(input_file)
-    data.loadInVerticalFormat(input_file)
-    
-    frequent_itemsets = apriori_alg.generateFrequentItemSets(data, 4)
-    
-    measures = [confidence, jaccard, coverage]
-    rule_generator = AssociationRuleGenerator(measures)
-    rules_and_ranks = rule_generator.generateRules(frequent_itemsets)    
-    selected_keys = rule_generator.selectRandomRules(rules_and_ranks[0], 3000)
-    print('writing selected rules....')
-    writeAssociationRules(output_file_1, selected_keys, rules_and_ranks[0])
-    
-    ranks_matrix = rule_generator.searchRankForValues(selected_keys, rules_and_ranks[0], rules_and_ranks[1])
-    print('writing rank matrix ....')
-    writeMatrix(output_file_2, ranks_matrix)
-    
-    correlation_coefs = CorrelationMeasures.computePearmanCorrelation(ranks_matrix)
-    print('writing correlation matrix ...')
-    writeMatrix(output_file_3, correlation_coefs[0])
-    
-    print ("Done!!!")
+    config = ProgramArguments()
+    if not config.loadArguments(argv) :
+        print ('Arguments is not correct. Please try again ...')
+        sys.exit(2)
+        
+    if config.opt == 'generate_rules':
+        apriori_alg = Apriori(config.min_sup)
+        data = DataSet()
+        print ('loading transaction database ....')
+        data.loadInHorizontalFormat(config.db_file)
+        
+        #data.loadInVerticalFormat(config.db_file)
+        print ('generating frequent item-sets ....')
+        frequent_itemsets = apriori_alg.generateFrequentItemSets(data, 4)
+        print('generating all association rules...')
+        rule_generator = AssociationRuleGenerator([])
+        association_rules = rule_generator.generateRules(frequent_itemsets)    
+        print ('writing frequent item-sets to file ....')
+        writeFrequentItemsets(config.freq_itemset_file, frequent_itemsets, data.size())
+        print('writing association rule to file ....')
+        writeAssociationRules(config.rules_file, association_rules)
+        print ('Done !!!')
+    elif config.opt == 'compute_correlation':
+        print ('computing correlation among interestingness measures...')
+        measures = [confidence, coverage, prevalence, recall, specificity, accuracy, lift, leverage, changeOfSupport,
+                    relativeRisk, jaccard, certaintyFactor, oddRatio, yuleQ, yuleY, klosgen, conviction,
+                    interestingnessWeightingDependency, collectiveStrength, laplaceCorrection, jmeasure, oneWaySupport,
+                    twoWaysSupport, twoWaysSupportVariation, linearCorrelationCoefficient, piatetskyShapiro, loevinger,
+                    informationGain, sebagSchoenauner, leastContradiction, oddMultiplier, counterexampleRate, zhang]
+        print('loading frequent item-sets....')
+        frequent_itemsets = readFrequentItemsets(config.freq_itemset_file)
+        
+        print('loading association rules ....')
+        association_rules = readAssociationRules(config.rules_file)
+        
+        print ('computing interestingness for all rules ....')
+        rule_generator = AssociationRuleGenerator(measures)
+        rank_indicators = rule_generator.computeInterestingness(association_rules, frequent_itemsets[1], frequent_itemsets[0])
+        print ('selecting association rules....')
+        selected_keys = AssociationRuleGenerator.selectRandomRules(association_rules, config.number_of_samples)
+        print ('assigning rank to association rules....')
+        rank_matrix = rule_generator.searchRankForValues(selected_keys, association_rules, rank_indicators)
+        correlation_matrix = computePearmanCorrelation(rank_matrix)
+        
+        print ('writing result to files ....')
+        writeInterestingness(config.interestingness_file, selected_keys, association_rules)
+        writeCorrelationMatrix(config.correlation_file, correlation_matrix[0])
+        writeCorrelationMatrix("ranks.txt", rank_matrix)
+        print('Done!!!')
+        
+    elif config.opt == 'clustering':
+        print('loading frequent itemsets....')
+        frequent_itemsets = readFrequentItemsets(config.freq_itemset_file)
+        
+        print('loading association rules ....')
+        association_rules = readAssociationRules(config.rules_file)
+        
+        print ('selecting association rules....')
+        selected_keys = AssociationRuleGenerator.selectRandomRules(association_rules, config.number_of_samples)
+        
+        print ('generating feature vectors for each rule....')
+        rule_vectors = generateRuleVector(selected_keys, association_rules, frequent_itemsets[1], frequent_itemsets[0])
+        
+        print ('clustering rules ....')
+        distance_matrix = computeDistances(rule_vectors)
+        labels = runDBSCAN(distance_matrix, 2.5, 3)
+        
+        print('writing clusters to file....')
+        writeClustersOfRules(config.clusters_file, selected_keys, labels)
+        print('Done!!!')
+    else:
+        print ('The option is not supported!!!')
                 
 if __name__ == "__main__":
     main(sys.argv)
