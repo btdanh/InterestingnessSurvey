@@ -1,9 +1,10 @@
 from InterestingPatterns.AprioriHashItemCollection import AprioriHashItemCollection
-import json
+from threading import Lock
 
 class AprioriHashTable:
     def __init__(self):
         self.table = {}
+        self.table_write_lock = Lock()
         
     def size(self):
         return len(self.table)
@@ -71,10 +72,10 @@ class AprioriHashTable:
 
     # this function is used for multi-thread
     def merge(self, other_hash_table):
-   
-        for key, hash_item_collection in other_hash_table.getItems():
-            self.table[key] = hash_item_collection
-
+        with self.table_write_lock:
+            for key, hash_item_collection in other_hash_table.getItems():
+                self.table[key] = hash_item_collection
+    
     def clear(self):
         self.table.clear()
         
@@ -98,30 +99,3 @@ class AprioriHashTable:
                 counter = 0
         sub_hash_tables.append(sub_hash_table)
         return sub_hash_tables
-    
-    def writeToFile(self, file_name):
-        with open(file_name, "w") as text_file:
-            #json.dump(self.table, text_file)
-            k = 0
-            for key, value in self.table.items():
-                if k > 0:
-                    text_file.write('\n')
-                text_file.write(key)
-                text_file.write('\n')
-                text_file.write(value.toString())
-                k += 1
-            
-    def loadFromFile(self, file_name):
-        self.table = {}
-        
-        with open(file_name, "r") as text_file:
-            k = 0
-            collection_key = None
-            for line in text_file:
-                if k % 2 == 0:
-                    collection_key = line.strip()
-                else:
-                    collection = AprioriHashItemCollection()
-                    collection.loadFromString(line.strip())
-                    self.table[collection_key] = collection
-                k = k + 1

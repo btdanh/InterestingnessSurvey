@@ -21,7 +21,6 @@ class DataSet:
         with open(file_path, "r") as text_in_file:
             for line in text_in_file:
                 transaction = [x.strip() for x in line.split(',')]
-                transaction = filter(None, transaction)
                 self.data.append(set(transaction))
             
     def loadInVerticalFormat(self, file_path):

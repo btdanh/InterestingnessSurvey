@@ -1,5 +1,4 @@
 from InterestingPatterns.AprioriHashItem import AprioriHashItem
-import json
 
 class AprioriHashItemCollection:
     def __init__(self):
@@ -60,19 +59,4 @@ class AprioriHashItemCollection:
             self.data[index + 1] = hash_item        
         else:
             self.data[index].addTransaction(tid)
-    
-    def toString(self):
-        temp = []
-        for item in self.data:
-            temp.append(item.toString())
-        return json.dumps(temp)
-
-    def loadFromString(self, json_string):
-        self.data = []
-        
-        temp = json.loads(json_string)
-        for item_string in temp:
-            item = AprioriHashItem(None)
-            item.loadFromString(item_string)
-            self.data.append(item)
-        
+            

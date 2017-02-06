@@ -1,5 +1,3 @@
-import json
-
 class AprioriHashItem:
     
     def __init__(self, item):
@@ -14,12 +12,4 @@ class AprioriHashItem:
     
     def size(self):
         return len(self.tids)
-    
-    def toString(self):
-        return json.dumps((self.last_item, self.tids))
-    
-    def loadFromString(self, jsonString):
-        result = json.loads(jsonString)
-        self.last_item = result[0]
-        self.tids = result[1]
         
