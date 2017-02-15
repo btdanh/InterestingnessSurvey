@@ -91,7 +91,7 @@ def generateFrequentItemSets(min_support, number_of_threads, start_k, end_k, old
         insertHashIntoDictionary(L_k_1, L)
         k += 1
     print ('stop at k = ' + str(k))
-    return (L_k_1, L)
+    return L_k_1, L
         
         
         

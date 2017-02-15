@@ -1,8 +1,7 @@
-from InterestingPatterns.ItemsetHelper import getItemsetFromKey, createKeyFromItemset
+from InterestingPatterns.ItemsetHelper import createKeyFromItemset,\
+    getItemsetFromKey
 import random
-import numpy
 from multiprocessing import Process
-from multiprocessing import Manager
 
 
 def massSpectrumFilter(rule):
@@ -63,13 +62,23 @@ def generateSubsets(bits, item_set, k, sub_lists):
     
     generateSubsets(bits, item_set, k+1, sub_lists)
     bits[k] = False
-    
-def runForRulesFromItemsets(frequent_itemsets, rules, rule_filter):
+
+def appendAssociationRulesToFile(file_name, association_rules):
+    with open(file_name, "a") as text_file:
+        for rule in association_rules:
+            text_file.write(rule.getRuleKey())
+            text_file.write('\n')
+            
+def runForRulesFromItemsets(frequent_itemsets, rule_filter, output_file):
     k = 0
+    rules = []
     for itemset in frequent_itemsets:
         k += 1
-        if k % 500 == 0:
-            print ('working on the itemset: ' + str(k))
+        if k % 250 == 0:
+            print ('writing some rules to file: ' + str(k))
+            appendAssociationRulesToFile(output_file, rules)
+            rules.clear()
+            
         if len(itemset) == 1:
             continue
         sub_lists = []
@@ -79,118 +88,70 @@ def runForRulesFromItemsets(frequent_itemsets, rules, rule_filter):
             rule = AssociationRule(subset_pair[0], subset_pair[1])
             if rule_filter == None or rule_filter(rule) == True:
                 rules.append(rule)
+    print ('writing last rules to file: ' + str(k))
+    appendAssociationRulesToFile(output_file, rules)
+    rules.clear()
     print ('Done for o sub frequent itemsets!!!')
                 
-def getItemsetsWithSpecificLength(frequent_itemsets_keys, from_len, to_len):
-    selected_itemsets = []
-    for itemset_key in frequent_itemsets_keys:
-        itemset = getItemsetFromKey(itemset_key)
-        if len(itemset) >= from_len and len(itemset) <= to_len:
-            selected_itemsets.append(itemset)
-    return selected_itemsets
             
-def generateRules(frequent_itemsets, number_of_threads, rule_filter, from_len, to_len):
-    selected_itemsets = getItemsetsWithSpecificLength(frequent_itemsets.keys(), from_len, to_len)
+def generateRules(frequent_itemsets, number_of_threads, rule_filter, output_file):
+    selected_itemsets = frequent_itemsets.keys()
      
     number_of_itemsets = len(selected_itemsets)
     print ('Number of frequent itemsets: ' + str(number_of_itemsets))
-    if number_of_itemsets < number_of_threads:
-        association_rules = []
-        runForRulesFromItemsets(selected_itemsets, association_rules, rule_filter)
-        return [association_rules]
-    else:
-        sub_itemsets = [[] for x in range(number_of_threads)]
+    sub_itemsets = [[] for x in range(number_of_threads)]
         
-        number_for_each_part = (int)(number_of_itemsets/number_of_threads) + 1
-                    
-        index = 0
-        counter = 0
-        
-        for itemset in selected_itemsets:
-            if counter < number_for_each_part:
-                sub_itemsets[index].append(itemset)
-                counter += 1
-            elif counter == number_for_each_part:
-                index += 1
-                sub_itemsets[index].append(itemset)
-                counter = 1
+    number_for_each_part = (int)(number_of_itemsets/number_of_threads) + 1
                 
-        sub_rules = []
-        manager = Manager()
-        for i in range(number_of_threads):
-            sub_rules.append(manager.list([]))
+    index = 0
+    counter = 0
+    
+    for itemset_key in selected_itemsets:
+        if counter < number_for_each_part:
+            sub_itemsets[index].append(getItemsetFromKey(itemset_key))
+            counter += 1
+        elif counter == number_for_each_part:
+            index += 1
+            sub_itemsets[index].append(getItemsetFromKey(itemset_key))
+            counter = 1
+         
+    processes = []
+    for index in range(number_of_threads):
+        file_name = str(index) + output_file
+        print('file name: ' + file_name)
+        process_i = Process(target=runForRulesFromItemsets, args=(sub_itemsets[index], rule_filter, file_name))
+        processes.append(process_i)
         
-        processes = []
-        for index in range(number_of_threads):
-            process_i = Process(target=runForRulesFromItemsets, args=(sub_itemsets[index], sub_rules[index], rule_filter))
-            processes.append(process_i)
-            
-            
-        for process_i in processes:
-            process_i.start()
-            
-        # wait for all thread completes
-        for process_i in processes:
-            process_i.join()
-            
-        '''for index in range(number_of_threads):
-            association_rules.extend(sub_rules[index])
-        '''
-        print ('go here!!!!')    
-    return sub_rules
-  
-def computeInterestingness(measures, association_rules, frequent_itemsets, total, m = 1, k = 1):
-    
-    rank_collectors = [[] for x in range(len(measures))]
-    for rule_key, rule in association_rules.items():
-        left = frequent_itemsets[rule.getLeftKey()]
-        right = frequent_itemsets[rule.getRightKey()]
-        both = frequent_itemsets[rule.getItemsetKey()]
         
-        for index in range(len(measures)):
-            value = measures[index](left, right, both, total)
-            association_rules[rule_key].appendScore(value)
-            rank_collectors[index].append(value)
-
-    rank_indicators = []
-    for rank_list in rank_collectors:
-        r = list(set(rank_list))
-        r.sort(reverse=True)
-        rank_indicators.append(r)
-
-    return rank_indicators
-    
-def findRank(item_list, element):
-    left = 0
-    right = len(item_list) - 1
-    
-    while left <= right:
-        pivot = int((left + right)/2)
-        if element == item_list[pivot]:
-            return pivot + 1
-        elif element < item_list[pivot]:
-            left = pivot + 1
-        else:
-            right = pivot -1
-    return -1
-
-def selectRandomRules(association_rules, threshold = None):
-    if threshold == None:
-        return association_rules.keys()
-    return random.sample(association_rules.keys(), min(threshold,len(association_rules)))
+    for process_i in processes:
+        process_i.start()
         
-
-def searchRankForValues(measures, selected_keys, association_rules, rank_indicators):
+    # wait for all thread completes
+    for process_i in processes:
+        process_i.join()
+        
+    print ('go here!!!!')    
     
-    ranks_matrix = numpy.zeros((len(selected_keys), len(measures)))
+
+
+def selectRandomRules(rule_file_suffix, number_of_files, sampling_rate):
+    
+    selected_rules = []
     i = 0
-    for rule_key in selected_keys:
-        for j in range(len(measures)):
-            value = association_rules[rule_key].scores[j]
-            rank = findRank(rank_indicators[j], value)
-            ranks_matrix[i,j] = rank
-        i += 1
-    return ranks_matrix
+    j = 0
+    for k in range(number_of_files):
+        file_name = str(k) + rule_file_suffix
+        with open(file_name, "r") as text_file:
+            for line in text_file:
+                r = random.uniform(0, 1)
+                if r <= sampling_rate: 
+                    selected_rules.append(line.strip())
+                    j += 1
+                    if j % 10000 == 0: print('selected ' + str(j) + ' patterns')
+                i += 1
+    print (str(i))
+    return selected_rules    
+
     
             
             

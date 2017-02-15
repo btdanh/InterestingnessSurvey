@@ -7,53 +7,35 @@ import numpy as np
 import random
 
 from sklearn.cluster.dbscan_ import DBSCAN
-from multiprocessing import Process
-from multiprocessing.managers import BaseManager
+from sklearn.metrics.pairwise import pairwise_distances
+
 from math import sqrt
-from InterestingPatterns.AssociationRuleGenerator import AssociationRule
+from numpy import histogram
+from sklearn.cluster.k_means_ import KMeans
+from difflib import SequenceMatcher
 
-class My2DArray:
-    def __init__(self, n, m):
-        self.matrix = np.zeros((n, m))
-        
-    def getMatrix(self):
-        return self.matrix
-    
-    def insertValue(self, i, j, value):
-        self.matrix[i,j] = value
-
-def longestCommonString(str1, str2):
-    longest = 0
-    n = len(str1)
-    m = len(str2)
-
-    for i in range(n):
-        for j in range(m):
-            if not (str1[i] == str2[j]): continue
-            
-            k = 0
-            while (k + i < n and k + j < m):
-                if (not (str1[k+i] == str2[k + j])): break
-                k += 1
-            if k > longest: longest = k
-    return longest
-
-def distanceInStructure(first, second):
+def computeDetailDistance(first, second):
     summary = 0
+    
     for i in range(len(first)):
         for j in range(len(second)):
-            longest = longestCommonString(first[i], second[j])
+            s = SequenceMatcher(None, first[0], second[0])
+            result = s.find_longest_match(0, len(first[0]), 0, len(second[0]))
+        
+            x = (len(first[i]) + len(second[j]) - 2 * result.size)
+            y = (len(first[i]) + len(second[j]) - result.size)
             
-            x = (len(first[i]) + len(second[j]) - 2 * longest)
-            y = (len(first[i]) + len(second[j]) - longest)
             summary += x/y
     return summary
 
-def distanceSubsets(first, second):
+def computeGeneralDistance(first, second):
+    
     intersect_set = set(first).intersection(set(second))
-    return (len(first) + len(second) - 2 * len(intersect_set))/(len(first) + len(second) - len(intersect_set))
-
-def generalDistance(vector1, vector2):
+    x = len(first) + len(second) - 2 * len(intersect_set)
+    y = len(first) + len(second) - len(intersect_set)
+    return x / y
+    
+def computeFormDistance1(vector1, vector2):
     item_set_1 = []
     item_set_1.extend(vector1[0])
     item_set_1.extend(vector1[1])
@@ -63,28 +45,27 @@ def generalDistance(vector1, vector2):
     item_set_2.extend(vector2[1])
     d = 0
  
-    left_diff = distanceSubsets(vector1[0], vector2[0])
+    left_diff = computeGeneralDistance(vector1[0], vector2[0])
     d += (left_diff ** 2)
-    right_diff = distanceSubsets(vector1[1], vector2[1])
+    right_diff = computeGeneralDistance(vector1[1], vector2[1])
     d += (right_diff ** 2)
     
-    both_diff = distanceSubsets(item_set_1, item_set_2)
+    both_diff = computeGeneralDistance(item_set_1, item_set_2)
     d += (both_diff ** 2)
-    return d
+    return sqrt(d)
     
     
-def detailDistance(vector1, vector2):
+def computeFormDistance2(vector1, vector2):
     d = 0
  
-    left_diff = distanceSubsets(vector1[0], vector2[0])
+    left_diff = computeGeneralDistance(vector1[0], vector2[0])
     d += (left_diff ** 2)
-    right_diff = distanceInStructure(vector1[1], vector2[1])
+    right_diff = computeDetailDistance(vector1[1], vector2[1])
     d += (right_diff ** 2)
-    return d
+    return sqrt(d)
 
-def generateRuleVector(selected_keys, association_rules, frequent_itemsets, number_of_transactions):
-    association_vectors = []
-    
+def generateFormVectors(selected_keys, association_rules):
+    form_vectors = []
     for rule_key in selected_keys:
         rule = association_rules[rule_key]
         
@@ -92,6 +73,16 @@ def generateRuleVector(selected_keys, association_rules, frequent_itemsets, numb
         vector.append(rule.left_items)
         vector.append(rule.right_items)
         
+        form_vectors.append(vector)
+    return form_vectors
+        
+def generateNumericVectors(selected_keys, association_rules, frequent_itemsets, number_of_transactions):
+    numeric_vectors = []
+    
+    for rule_key in selected_keys:
+        rule = association_rules[rule_key]
+        
+        vector = []
         left = frequent_itemsets[rule.getLeftKey()]
         right = frequent_itemsets[rule.getRightKey()]
         
@@ -128,77 +119,48 @@ def generateRuleVector(selected_keys, association_rules, frequent_itemsets, numb
         ''' P(~A~B)'''
         p_not_A_and_not_B = 1 - (left + right - both)/number_of_transactions
         vector.append(p_not_A_and_not_B)  
-        association_vectors.append(vector)
+        numeric_vectors.append(vector)
         
-    return association_vectors
+    return np.array(numeric_vectors)
         
-def runToComputeDistances(rule_vectors, distance_function, my_matrix, start, end):
-    min_distance = -1
-    max_distance = -1
-    for i in range(start,  end):
-        if i % 1000 == 0: 
-            print (str(i))
-        for j in range(0, i):
-            
-            d = 0
-            for k in range(2, len(rule_vectors[i])):
-                d += (rule_vectors[i][k] - rule_vectors[j][k]) ** 2
-            if not (distance_function == None): 
-                d += distance_function(rule_vectors[i], rule_vectors[j])
-            
-            d = sqrt(d)
-            my_matrix.insertValue(i,j, d)
-            my_matrix.insertValue(j, i, d)
-            if min_distance == -1 or min_distance > d:
-                min_distance = d
-            if max_distance == -1 or max_distance < d:
-                max_distance = d
+def computePairwiseFormDistance(form_vectors, distance_func):
+    n = len(form_vectors)
+    distance = np.zeros((n, n))
+    for i in range(n):
+        if i % 500 == 0: print (str(i))
+        for j in range(i + 1, n):
+            d = distance_func(form_vectors[i], form_vectors[j])
+            distance[i, j] = d
+            distance[j, i] = d
+    return distance
     
-                
-    print ('min distance: ' + str(min_distance))
-    print ('max distance: ' + str(max_distance))
-            
+def computeDistanceMatrix(numeric_vectors, form_vectors, distance_func, number_of_threads):
+    matrix_1 = pairwise_distances(X = numeric_vectors, metric = 'euclidean', n_jobs = number_of_threads)
+    #matrix_2 = pairwise_distances(X = form_vectors, metric = distance_func, n_jobs = number_of_threads)
+    matrix_2 = computePairwiseFormDistance(form_vectors, distance_func)
+    
+    distance_matrix = 0.5 * matrix_1 + 0.5 * matrix_2
+    a = histogram(distance_matrix, density = True)
+    print (a)
+    
+    return distance_matrix
 
-def computeDistances(rule_vectors, number_of_threads, distance_function = None):
-    number_of_rule = len(rule_vectors)
+def runKMeans(distance_matrix, nClusters, number_of_threads):
     
-    ''' 
-    Run in the case just need one thread
-    '''
-    if number_of_threads == 1:
-        my_matrix = My2DArray(number_of_rule, number_of_rule)
-        runToComputeDistances(rule_vectors, distance_function, my_matrix, 0, number_of_rule)
-        return my_matrix.getMatrix()
+    km = KMeans(n_clusters=nClusters, max_iter = 100, init='k-means++', precompute_distances=True, n_jobs=number_of_threads)
+    km.fit(distance_matrix)
     
-    ''' 
-    Run in the case just need more than one thread
-    '''
-    number_for_part = (int)(number_of_rule / number_of_threads) + 1
+    labels = km.labels_
+    n_clusters = len(set(labels))- (1 if -1 in labels else 0)
+    n_noises = list(labels).count(-1)
     
-    start = 0
-    sub_ranges = []
-    for i in range(number_of_threads):
-        end = min(start + number_for_part, number_of_rule)
-        sub_ranges.append((start, end))
-        start = end
-    BaseManager.register('My2DArray', My2DArray)
-    manager = BaseManager()
-    manager.start()
-    my_matrix = manager.My2DArray(number_of_rule, number_of_rule)
-        
-    processes = []
-    for value_pair in sub_ranges:
-        process_i = Process(target = runToComputeDistances, args = (rule_vectors, distance_function, my_matrix, value_pair[0], value_pair[1]))
-        process_i.start()
-        processes.append(process_i)
-        
-    for process_i in processes:
-        process_i.join()
-        
-    return my_matrix.getMatrix()
-                
-def runDBSCAN(distance_matrix, my_eps, my_min_samples):
-    db = DBSCAN(eps = my_eps, min_samples=my_min_samples)
+    print('Number of clusters' + str(n_clusters))
+    print('Number of noises' + str(n_noises))
+
+    return list(labels)
+
+def runDBSCAN(distance_matrix, my_eps, my_min_samples, number_of_threads):
+    db = DBSCAN(eps = my_eps, min_samples=my_min_samples, metric='precomputed', n_jobs=number_of_threads)
     db.fit(distance_matrix)
     
     labels = db.labels_
@@ -214,7 +176,7 @@ def selectCandidateFromClusters(clusters_and_rules, for_cluster, for_noises):
     selected_rules = []
     for cluster_label, rules in clusters_and_rules.items():
         if cluster_label == '-1':
-            count = for_noises * len(rules)
+            count = min(for_noises, len(rules))
             selected_rules.extend(random.sample(rules, count))
         else:
             selected_rules.extend(random.sample(rules, for_cluster))
